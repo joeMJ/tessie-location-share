@@ -1,0 +1,42 @@
+# In Deine configuration.yaml einfügen (oder als Package einbinden).
+# Achtung: Falls Du schon einen "input_select:", "timer:" oder "rest_command:" Block hast,
+# die Einträge dort einsortieren – ein zweiter gleichnamiger Block überschreibt den ersten!
+
+input_select:
+  standort_teilen:
+    name: Standort teilen
+    options:
+      - "Aus"
+      - "60"      # Dauer in Minuten – beliebig erweiterbar
+      - "120"
+      - "180"
+      - "240"
+      - "360"
+      - "600"
+    icon: mdi:share-variant
+
+timer:
+  standort_timer:
+    name: Standort Timer
+
+rest_command:
+  update_tesla_location:
+    url: "https://DEINE-WEBSITE.de/shareloc/update.php"
+    method: POST
+    content_type: 'application/json'
+    payload: >-
+      {% set arrival = states('sensor.deintesla_zeit_bis_zur_ankunft') %}
+      {% set eta = 0 %}
+      {% if arrival not in ['unknown', 'unavailable', 'none', ''] %}
+        {% set eta = ((as_timestamp(arrival) - as_timestamp(now())) / 60) | round(0) %}
+      {% endif %}
+      {% set ziel = states('sensor.deintesla_ziel') %}
+      {
+        "secret": "DEIN_LANGES_ZUFAELLIGES_GEHEIMNIS",
+        "status": "{{ status }}",
+        "lat": "{{ state_attr('device_tracker.deintesla_standort', 'latitude') if status == 'active' else 0 }}",
+        "lon": "{{ state_attr('device_tracker.deintesla_standort', 'longitude') if status == 'active' else 0 }}",
+        "dest": "{{ ('Ohne festes Ziel' if ziel in ['unknown', 'unavailable', 'none', ''] else ziel) if status == 'active' else 'Kein Ziel (Freigabe beendet)' }}",
+        "eta": {{ eta if status == 'active' else 0 }},
+        "soc_arrival": {{ states('sensor.deintesla_ladezustand_bei_ankunft') | float(0) | round(0) if status == 'active' else 0 }}
+      }

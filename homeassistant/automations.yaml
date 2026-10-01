@@ -1,0 +1,79 @@
+# Beide Automatisierungen in Deine automations.yaml einfügen (oder per UI als YAML anlegen).
+# Der Benachrichtigungsdienst (notify.pushover) ist optional – ersetze ihn durch Deinen eigenen oder entferne den Schritt.
+
+- id: shareloc_timer
+  alias: "Tesla: Standort Timer Steuerung"
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id: input_select.standort_teilen
+      id: dropdown
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.standort_timer
+      id: timer_done
+  action:
+    - choose:
+        # Freigabe starten (Dropdown auf eine Dauer gestellt)
+        - conditions:
+            - condition: trigger
+              id: dropdown
+            - condition: state
+              entity_id: input_select.standort_teilen
+              state:
+                - "60"
+                - "120"
+                - "180"
+                - "240"
+                - "360"
+                - "600"
+          sequence:
+            - service: timer.start
+              target:
+                entity_id: timer.standort_timer
+              data:
+                duration: "{{ states('input_select.standort_teilen') | int * 60 }}"
+            - service: rest_command.update_tesla_location
+              data:
+                status: active
+
+        # Freigabe beenden (Timer abgelaufen oder Dropdown manuell auf "Aus")
+        - conditions:
+            - condition: or
+              conditions:
+                - condition: trigger
+                  id: timer_done
+                - condition: template
+                  value_template: "{{ trigger.id == 'dropdown' and states('input_select.standort_teilen') == 'Aus' }}"
+          sequence:
+            - service: timer.cancel
+              target:
+                entity_id: timer.standort_timer
+            - service: input_select.select_option
+              target:
+                entity_id: input_select.standort_teilen
+              data:
+                option: "Aus"
+            - service: rest_command.update_tesla_location
+              data:
+                status: expired
+            - service: notify.pushover   # optional
+              data:
+                title: "Standortfreigabe beendet"
+                message: "Die Live-Standortfreigabe für Dein Fahrzeug ist abgelaufen."
+
+- id: shareloc_push
+  alias: "Tesla: Standort an Webspace pushen"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: device_tracker.deintesla_standort
+  condition:
+    - condition: state
+      entity_id: timer.standort_timer
+      state: "active"
+  action:
+    - service: rest_command.update_tesla_location
+      data:
+        status: active

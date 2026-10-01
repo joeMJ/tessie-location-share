@@ -1,0 +1,13 @@
+# Optionale Dashboard-Karte (manuelle Karte, YAML-Modus)
+type: entities
+title: Standort teilen
+entities:
+  - entity: input_select.standort_teilen
+  - entity: timer.standort_timer
+  - type: button
+    name: Teilen via SMS
+    icon: mdi:message-text-outline
+    tap_action:
+      action: url
+      url_path: >-
+        sms:?body=Verfolge%20meine%20Fahrt%20live%3A%20https%3A%2F%2FDEINE-WEBSITE.de%2Fshareloc%2F

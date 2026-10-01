@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <title>Live-Standort</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        html { height: 100%; }
+        body { 
+            margin: 0; 
+            padding: 5px; 
+            box-sizing: border-box; 
+            height: 100%; 
+            height: 100dvh; 
+            background: #222; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        }
+        #container {
+            display: flex; 
+            flex-direction: column;
+            height: 100%; 
+            background: #f8f9fa; 
+            border-radius: 6px; 
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        #header {
+            background: #ffffff; 
+            padding: 15px; 
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            font-weight: 600; 
+            font-size: 1.2rem; 
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+        #map-wrapper {
+            flex: 1; 
+            position: relative;
+        }
+        #map { height: 100%; width: 100%; display: none; }
+        #footer {
+            background: #ffffff; 
+            padding: 12px 10px; 
+            text-align: center;
+            border-top: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .footer-credits {
+            font-size: 0.75rem;
+            color: #666;
+            line-height: 1.5;
+        }
+        .footer-credits a {
+            color: #555;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        .footer-credits a:hover {
+            color: #000;
+        }
+        
+        /* Das neue Styling für das Zitat */
+
+        #info-box {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center; width: 85%; max-width: 350px; display: none;
+            color: #222; line-height: 1.6; font-size: 0.95rem;
+        }
+        #expired-msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 40px; border-radius: 12px; text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: none; width: 80%; max-width: 400px;
+            color: #333;
+        }
+        .car-icon {
+            filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));
+        }
+        
+        /* Landkarte in Graustufen (aber Marker bleibt farbig!) */
+        .leaflet-tile-pane {
+            filter: grayscale(100%);
+            -webkit-filter: grayscale(100%); /* Safari Support */
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="header">Live-Standort</div>
+    
+    <div id="map-wrapper">
+        <div id="info-box">Warte auf GPS-Daten...</div>
+        <div id="expired-msg">
+            <svg style="width:50px;height:50px;margin-bottom:15px;" viewBox="0 0 24 24" fill="#666">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/>
+            </svg>
+            <br><b>Die Live-Standortfreigabe wurde beendet.</b>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <div id="footer">
+        <div class="footer-credits">
+            Karten von <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+            | <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    var map = L.map('map', { zoomControl: false }).setView([51.165, 10.451], 6);
+    L.control.zoom({ position: 'bottomright' }).addTo(map); 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    
+    // Google Maps Style Navigationsnadel (SVG)
+    var carSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#007BFF"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>';
+    var carUrl = 'data:image/svg+xml;base64,' + btoa(carSvg);
+    var carIcon = L.icon({
+        iconUrl: carUrl,
+        iconSize: [36, 36],
+        iconAnchor: [18, 33],
+        className: 'car-icon'
+    });
+
+    var marker = null;
+    var isFirstLoad = true; 
+
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    function fetchLocation() {
+        fetch('data.json?t=' + new Date().getTime())
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'expired') {
+                    document.getElementById('map').style.display = 'none';
+                    document.getElementById('info-box').style.display = 'none';
+                    document.getElementById('expired-msg').style.display = 'block';
+                } else if (data.status === 'active') {
+                    document.getElementById('map').style.display = 'block';
+                    map.invalidateSize(); 
+
+                    document.getElementById('expired-msg').style.display = 'none';
+                    document.getElementById('info-box').style.display = 'block';
+                    
+                    var lat = parseFloat(data.lat);
+                    var lon = parseFloat(data.lon);
+                    
+                    if (!marker) {
+                        marker = L.marker([lat, lon], {icon: carIcon}).addTo(map);
+                    } else {
+                        marker.setLatLng([lat, lon]); 
+                    }
+
+                    if (isFirstLoad) {
+                        map.setView([lat, lon], 14);
+                        isFirstLoad = false;
+                    }
+
+                    document.getElementById('info-box').innerHTML = 
+                        "<b>Ziel:</b> " + escapeHTML(data.dest) + "<br>" +
+                        "<b>Ankunft in:</b> " + Math.round(data.eta) + " Minuten<br>" +
+                        "<b>Akku bei Ankunft:</b> " + Math.round(data.soc_arrival) + "%";
+                }
+            })
+            .catch(error => console.log('Warte auf Daten...'));
+    }
+
+    fetchLocation();
+    setInterval(fetchLocation, 5000);
+</script>
+</body>
+</html>

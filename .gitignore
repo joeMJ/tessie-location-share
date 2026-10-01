@@ -1,0 +1,9 @@
+# Secrets
+webspace/config.php
+.env
+*.bak
+*.bak_*
+# Laufzeit
+webspace/data.json.tmp
+.DS_Store
+*.swp
